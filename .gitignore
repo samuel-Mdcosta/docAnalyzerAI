@@ -93,3 +93,6 @@ htmlcov/
 .cache/
 tmp/
 temp/
+
+CLAUDE.md
+.claude
