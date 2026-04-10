@@ -1,6 +1,5 @@
 # Extração de documentos
 docling==2.31.0
-pymupdf==1.24.0
 
 # LLM e agente
 langchain==0.3.0
@@ -11,6 +10,9 @@ langchain-text-splitters==0.3.0
 langgraph==0.2.0
 google-generativeai==0.8.0
 tavily-python==0.5.0
+
+# Configuração
+pydantic-settings==2.4.0
 
 # API
 fastapi==0.115.0
