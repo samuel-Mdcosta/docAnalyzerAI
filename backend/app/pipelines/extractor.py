@@ -9,7 +9,7 @@ from docling.datamodel.pipeline_options import PdfPipelineOptions
 from app.config import settings
 
 
-async def extract_document(path: Path, enable_ocr: bool = False) -> DoclingDocument:
+async def extract_document(path: Path, enable_ocr: bool = False) -> tuple[DoclingDocument, str]:
     converter = _build_converter(enable_ocr)
 
     result = await asyncio.to_thread(converter.convert, path)
@@ -20,7 +20,12 @@ async def extract_document(path: Path, enable_ocr: bool = False) -> DoclingDocum
             f"Verifique se o arquivo é um PDF válido e não está corrompido."
         )
 
-    return result.document
+    document = result.document
+
+    full_text = document.export_to_markdown()
+
+    return document, full_text
+
 
 
 def _build_converter(enable_ocr: bool) -> DocumentConverter:
