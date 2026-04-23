@@ -1,7 +1,10 @@
 import asyncio
+import base64
+from io import BytesIO
 from pathlib import Path
 
 import pandas as pd
+import google.generativeai as genai
 from docling.document_converter import DocumentConverter, PdfFormatOption
 from docling.datamodel.base_models import ConversionStatus
 from docling.datamodel.document import DoclingDocument
@@ -9,8 +12,17 @@ from docling.datamodel.pipeline_options import PdfPipelineOptions
 
 from app.config import settings
 
+genai.configure(api_key=settings.gemini_api_key)
+_gemini = genai.GenerativeModel("gemini-1.5-pro")
 
-async def extract_document(path: Path, enable_ocr: bool = False) -> tuple[DoclingDocument, str, list[dict]]:
+_FIGURE_PROMPT = (
+    "Descreva objetivamente o conteúdo deste gráfico ou figura. "
+    "Se houver valores numéricos, séries ou categorias visíveis, liste-os explicitamente. "
+    "Se não for possível identificar nenhum dado relevante, responda apenas: [figura sem dados extraíveis]."
+)
+
+
+async def extract_document(path: Path, enable_ocr: bool = False) -> tuple[DoclingDocument, str, list[dict], list[dict]]:
     converter = _build_converter(enable_ocr)
 
     result = await asyncio.to_thread(converter.convert, path)
@@ -27,7 +39,47 @@ async def extract_document(path: Path, enable_ocr: bool = False) -> tuple[Doclin
 
     tables = _extract_tables(document)
 
-    return document, full_text, tables
+    figures = await _extract_figures(document) if settings.enable_chart_extraction else []
+
+    return document, full_text, tables, figures
+
+
+async def _extract_figures(document: DoclingDocument) -> list[dict]:
+    """
+    Itera sobre as figuras do documento e envia cada imagem ao Gemini para
+    gerar uma descrição textual. Figuras sem imagem gerada (PDFs vetoriais
+    onde o Docling não conseguiu recortar) são ignoradas silenciosamente.
+    """
+    figures = []
+
+    for index, picture in enumerate(document.pictures):
+        image = picture.get_image(document)
+        if image is None:
+            continue
+
+        page = picture.prov[0].page_no if picture.prov else None
+
+        buffer = BytesIO()
+        image.save(buffer, format="PNG")
+        image_bytes = buffer.getvalue()
+        image_b64 = base64.b64encode(image_bytes).decode("utf-8")
+
+        try:
+            response = await asyncio.to_thread(
+                _gemini.generate_content,
+                [_FIGURE_PROMPT, {"mime_type": "image/png", "data": image_b64}],
+            )
+            description = response.text.strip()
+        except Exception:
+            description = "[erro ao processar figura com Gemini]"
+
+        figures.append({
+            "index": index,
+            "page": page,
+            "description": description,
+        })
+
+    return figures
 
 
 def _extract_tables(document: DoclingDocument) -> list[dict]:
