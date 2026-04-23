@@ -10,10 +10,14 @@ services:
       - REDIS_URL=redis://redis:6379
       - JWT_SECRET=${JWT_SECRET}
       - TAVILY_API_KEY=${TAVILY_API_KEY}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
+      - LANGFUSE_HOST=http://langfuse:3000
     volumes:
       - ./backend/app:/app/app
     depends_on:
       - redis
+      - langfuse
     restart: unless-stopped
 
   redis:
@@ -22,3 +26,47 @@ services:
     ports:
       - "6379:6379"
     restart: unless-stopped
+
+  langfuse-db:
+    image: postgres:16-alpine
+    container_name: docanalyzer-langfuse-db
+    environment:
+      POSTGRES_DB: langfuse
+      POSTGRES_USER: langfuse
+      POSTGRES_PASSWORD: ${LANGFUSE_DB_PASSWORD:-langfuse_secret}
+    volumes:
+      - langfuse_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U langfuse -d langfuse"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  langfuse:
+    image: langfuse/langfuse:latest
+    container_name: docanalyzer-langfuse
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://langfuse:${LANGFUSE_DB_PASSWORD:-langfuse_secret}@langfuse-db:5432/langfuse
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:-replace_with_32char_secret}
+      NEXTAUTH_URL: http://localhost:3000
+      LANGFUSE_INIT_ORG_ID: docanalyzer
+      LANGFUSE_INIT_ORG_NAME: DocAnalyzer AI
+      LANGFUSE_INIT_PROJECT_ID: docanalyzer-main
+      LANGFUSE_INIT_PROJECT_NAME: DocAnalyzer AI
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-placeholder}
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-placeholder}
+      LANGFUSE_INIT_USER_EMAIL: ${LANGFUSE_ADMIN_EMAIL:-admin@docanalyzer.local}
+      LANGFUSE_INIT_USER_NAME: Admin
+      LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_ADMIN_PASSWORD:-admin123}
+      SALT: ${LANGFUSE_SALT:-replace_with_random_salt}
+      TELEMETRY_ENABLED: "false"
+    depends_on:
+      langfuse-db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  langfuse_db_data:
