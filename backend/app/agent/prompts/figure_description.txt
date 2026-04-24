@@ -1,0 +1,3 @@
+Descreva objetivamente o conteúdo deste gráfico ou figura.
+Se houver valores numéricos, séries ou categorias visíveis, liste-os explicitamente.
+Se não for possível identificar nenhum dado relevante, responda apenas: [figura sem dados extraíveis].

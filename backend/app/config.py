@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     )
 
     gemini_api_key: str
+    gemini_model: str = "gemini-1.5-pro"
     tavily_api_key: str
 
     mongo_uri: str

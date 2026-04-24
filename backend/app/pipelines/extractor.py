@@ -18,13 +18,10 @@ from langfuse.decorators import observe
 from app.config import settings
 
 genai.configure(api_key=settings.gemini_api_key)
-_gemini = genai.GenerativeModel("gemini-1.5-pro")
+_gemini = genai.GenerativeModel(settings.gemini_model)
 
-_FIGURE_PROMPT = (
-    "Descreva objetivamente o conteúdo deste gráfico ou figura. "
-    "Se houver valores numéricos, séries ou categorias visíveis, liste-os explicitamente. "
-    "Se não for possível identificar nenhum dado relevante, responda apenas: [figura sem dados extraíveis]."
-)
+_PROMPTS_DIR = Path(__file__).parent.parent / "agent" / "prompts"
+_FIGURE_PROMPT = (_PROMPTS_DIR / "figure_description.txt").read_text(encoding="utf-8").strip()
 
 class TableResult(BaseModel):
     index: int
