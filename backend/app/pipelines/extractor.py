@@ -2,6 +2,7 @@ import asyncio
 import base64
 from io import BytesIO
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 import google.generativeai as genai
@@ -9,6 +10,10 @@ from docling.document_converter import DocumentConverter, PdfFormatOption
 from docling.datamodel.base_models import ConversionStatus
 from docling.datamodel.document import DoclingDocument
 from docling.datamodel.pipeline_options import PdfPipelineOptions
+
+from pydantic import BaseModel, ConfigDict
+
+from langfuse.decorators import observe
 
 from app.config import settings
 
@@ -21,8 +26,29 @@ _FIGURE_PROMPT = (
     "Se não for possível identificar nenhum dado relevante, responda apenas: [figura sem dados extraíveis]."
 )
 
+class TableResult(BaseModel):
+    index: int
+    page: int | None
+    markdown: str
+    dataframe: Any
 
-async def extract_document(path: Path, enable_ocr: bool = False) -> tuple[DoclingDocument, str, list[dict], list[dict]]:
+
+class FigureResult(BaseModel):
+    index: int
+    page: int | None
+    description: str
+
+
+class ExtractionResult(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    document: DoclingDocument
+    full_text: str
+    tables: list[TableResult]
+    figures: list[FigureResult]
+
+@observe()
+async def extract_document(path: Path, enable_ocr: bool = False) -> ExtractionResult:
     converter = _build_converter(enable_ocr)
 
     result = await asyncio.to_thread(converter.convert, path)
@@ -41,15 +67,16 @@ async def extract_document(path: Path, enable_ocr: bool = False) -> tuple[Doclin
 
     figures = await _extract_figures(document) if settings.enable_chart_extraction else []
 
-    return document, full_text, tables, figures
+    return ExtractionResult(
+        document=document,
+        full_text=full_text,
+        tables=tables,
+        figures=figures,
+    )
 
 
-async def _extract_figures(document: DoclingDocument) -> list[dict]:
-    """
-    Itera sobre as figuras do documento e envia cada imagem ao Gemini para
-    gerar uma descrição textual. Figuras sem imagem gerada (PDFs vetoriais
-    onde o Docling não conseguiu recortar) são ignoradas silenciosamente.
-    """
+@observe()
+async def _extract_figures(document: DoclingDocument) -> list[FigureResult]:
     figures = []
 
     for index, picture in enumerate(document.pictures):
@@ -73,16 +100,13 @@ async def _extract_figures(document: DoclingDocument) -> list[dict]:
         except Exception:
             description = "[erro ao processar figura com Gemini]"
 
-        figures.append({
-            "index": index,
-            "page": page,
-            "description": description,
-        })
+        figures.append(FigureResult(index=index, page=page, description=description))
 
     return figures
 
 
-def _extract_tables(document: DoclingDocument) -> list[dict]:
+@observe()
+def _extract_tables(document: DoclingDocument) -> list[TableResult]:
     tables = []
 
     for index, table in enumerate(document.tables):
@@ -92,15 +116,9 @@ def _extract_tables(document: DoclingDocument) -> list[dict]:
 
         dataframe: pd.DataFrame = table.export_to_dataframe()
 
-        tables.append({
-            "index": index,
-            "page": page,
-            "markdown": markdown,
-            "dataframe": dataframe,
-        })
+        tables.append(TableResult(index=index, page=page, markdown=markdown, dataframe=dataframe))
 
     return tables
-
 
 
 def _build_converter(enable_ocr: bool) -> DocumentConverter:
