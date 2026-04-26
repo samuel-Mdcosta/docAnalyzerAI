@@ -61,3 +61,39 @@ def chunk_text(text: str) -> list[str]:
         chunks.append(" ".join(current))
 
     return chunks
+
+
+def chunk_text_items(
+    items: list[tuple[str, int | None]],
+    source: str,
+) -> list[ChunkResult]:
+    if not items:
+        return []
+
+    def make_chunks(page: int | None, texts: list[str], start: int) -> list[ChunkResult]:
+        return [
+            ChunkResult(
+                text=chunk,
+                index=start + i,
+                page=page,
+                chunk_type="text",
+                metadata={"source": source},
+            )
+            for i, chunk in enumerate(chunk_text("\n".join(texts)))
+        ]
+
+    results: list[ChunkResult] = []
+    current_page = items[0][1]
+    current_texts: list[str] = []
+
+    for text, page in items:
+        if page != current_page and current_texts:
+            results.extend(make_chunks(current_page, current_texts, len(results)))
+            current_page = page
+            current_texts = []
+        current_texts.append(text)
+
+    if current_texts:
+        results.extend(make_chunks(current_page, current_texts, len(results)))
+
+    return results
